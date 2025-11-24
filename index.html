@@ -121,6 +121,24 @@
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
     }
+    .attachments {
+      margin-top: 12px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .attachments h4 {
+      margin: 0 0 6px 0;
+      font-size: 14px;
+      letter-spacing: 0.2px;
+    }
+    .attachment-list {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
     .stops { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
     .stop-card {
       background: var(--panel);
@@ -178,11 +196,12 @@
       <div class="panel-header">
         <div>
           <strong>Survey details</strong>
-          <div class="stop-sub">Required fields are stored on-device only. Clear with “New survey”.</div>
+          <div class="stop-sub">Required fields are stored on-device only. Clear with "New survey".</div>
         </div>
         <div class="controls">
           <button id="addStop" class="secondary">Add stop</button>
           <button id="downloadCsv">Download CSV</button>
+          <button id="sharePackage">Share/Download package</button>
           <button id="newSurvey" class="danger">New survey</button>
         </div>
       </div>
@@ -199,6 +218,13 @@
         <label>Weather
           <input data-meta="weather" type="text" placeholder="Temp, wind, precipitation" />
         </label>
+      </div>
+      <div class="attachments">
+        <h4>Attachments (optional)</h4>
+        <label>Include scanned forms or photos in the package
+          <input id="attachmentInput" type="file" multiple />
+        </label>
+        <div id="attachmentList" class="attachment-list">No attachments selected.</div>
       </div>
     </section>
 
@@ -254,10 +280,13 @@
     };
 
     let state = loadState();
+    let attachments = [];
 
     const saveState = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 
     const stopsContainer = document.getElementById('stops');
+    const attachmentInput = document.getElementById('attachmentInput');
+    const attachmentListEl = document.getElementById('attachmentList');
 
     const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
       '&': '&amp;',
@@ -422,17 +451,169 @@
     };
 
     const downloadCsv = () => {
+      const { csv, dateTag } = buildCsv();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `wildlife_survey_${dateTag}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    };
+
+    const buildCsv = () => {
       const header = ['observer','route','date','weather','stop','timestamp','lat','lon','detection','count','distance_m','azimuth_deg','notes'];
       const rows = state.stops.map((stop) => (
         [state.meta.observer, state.meta.route, state.meta.date, state.meta.weather, stop.stop, stop.timestamp, stop.lat, stop.lon, stop.detection, stop.count, stop.distance, stop.azimuth, stop.notes]
       ));
       const csv = [header.join(','), ...rows.map((r) => r.map(escapeCsv).join(','))].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
+      const dateTag = state.meta.date || new Date().toISOString().slice(0, 10);
+      return { csv, dateTag };
+    };
+
+    const refreshAttachmentList = () => {
+      if (!attachments.length) {
+        attachmentListEl.textContent = 'No attachments selected.';
+        return;
+      }
+      const summary = attachments.map((f) => `${f.name} (${Math.round(f.size / 1024)} KB)`).join(' • ');
+      attachmentListEl.textContent = summary;
+    };
+
+    const buildCrcTable = () => {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+          c = ((c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1));
+        }
+        table[n] = c >>> 0;
+      }
+      return table;
+    };
+
+    const CRC_TABLE = buildCrcTable();
+    const crc32 = (bytes) => {
+      let c = 0 ^ -1;
+      for (let i = 0; i < bytes.length; i++) {
+        c = (c >>> 8) ^ CRC_TABLE[(c ^ bytes[i]) & 0xff];
+      }
+      return (c ^ -1) >>> 0;
+    };
+
+    const dateToDos = (date) => {
+      const d = date || new Date();
+      let year = d.getUTCFullYear();
+      if (year < 1980) year = 1980;
+      const month = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      const dosTime = ((d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | ((d.getUTCSeconds() / 2) | 0)) & 0xffff;
+      const dosDate = (((year - 1980) << 9) | (month << 5) | day) & 0xffff;
+      return { dosTime, dosDate };
+    };
+
+    const buildZip = async (files) => {
+      const encoder = new TextEncoder();
+      const localParts = [];
+      const centralParts = [];
+      let offset = 0;
+
+      for (const file of files) {
+        const data = new Uint8Array(await file.arrayBuffer());
+        const nameBytes = encoder.encode(file.name);
+        const { dosTime, dosDate } = dateToDos(file.lastModified ? new Date(file.lastModified) : new Date());
+        const crc = crc32(data);
+
+        const local = new Uint8Array(30 + nameBytes.length);
+        const lv = new DataView(local.buffer);
+        lv.setUint32(0, 0x04034b50, true);
+        lv.setUint16(4, 20, true); // version needed
+        lv.setUint16(6, 0, true);  // flags
+        lv.setUint16(8, 0, true);  // compression: store
+        lv.setUint16(10, dosTime, true);
+        lv.setUint16(12, dosDate, true);
+        lv.setUint32(14, crc, true);
+        lv.setUint32(18, data.byteLength, true);
+        lv.setUint32(22, data.byteLength, true);
+        lv.setUint16(26, nameBytes.length, true);
+        lv.setUint16(28, 0, true); // extra len
+        local.set(nameBytes, 30);
+
+        localParts.push(local, data);
+
+        const central = new Uint8Array(46 + nameBytes.length);
+        const cv = new DataView(central.buffer);
+        cv.setUint32(0, 0x02014b50, true);
+        cv.setUint16(4, 20, true); // version made
+        cv.setUint16(6, 20, true); // version needed
+        cv.setUint16(8, 0, true);  // flags
+        cv.setUint16(10, 0, true); // compression
+        cv.setUint16(12, dosTime, true);
+        cv.setUint16(14, dosDate, true);
+        cv.setUint32(16, crc, true);
+        cv.setUint32(20, data.byteLength, true);
+        cv.setUint32(24, data.byteLength, true);
+        cv.setUint16(28, nameBytes.length, true);
+        cv.setUint16(30, 0, true); // extra len
+        cv.setUint16(32, 0, true); // comment len
+        cv.setUint16(34, 0, true); // disk start
+        cv.setUint16(36, 0, true); // internal attrs
+        cv.setUint32(38, 0, true); // external attrs
+        cv.setUint32(42, offset, true); // relative offset
+        central.set(nameBytes, 46);
+        centralParts.push(central);
+
+        offset += local.byteLength + data.byteLength;
+      }
+
+      const centralSize = centralParts.reduce((sum, part) => sum + part.byteLength, 0);
+      const centralOffset = offset;
+      const eocd = new Uint8Array(22);
+      const ev = new DataView(eocd.buffer);
+      ev.setUint32(0, 0x06054b50, true);
+      ev.setUint16(4, 0, true); // disk
+      ev.setUint16(6, 0, true); // disk
+      ev.setUint16(8, centralParts.length, true);
+      ev.setUint16(10, centralParts.length, true);
+      ev.setUint32(12, centralSize, true);
+      ev.setUint32(16, centralOffset, true);
+      ev.setUint16(20, 0, true); // comment len
+
+      const totalSize = offset + centralSize + eocd.byteLength;
+      const output = new Uint8Array(totalSize);
+      let cursor = 0;
+      for (const part of localParts) { output.set(part, cursor); cursor += part.byteLength; }
+      for (const part of centralParts) { output.set(part, cursor); cursor += part.byteLength; }
+      output.set(eocd, cursor);
+
+      return new Blob([output], { type: 'application/zip' });
+    };
+
+    const shareOrDownloadPackage = async () => {
+      const { csv, dateTag } = buildCsv();
+      const csvFile = new File([csv], `wildlife_survey_${dateTag}.csv`, { type: 'text/csv' });
+      const files = [csvFile, ...attachments];
+
+      if (navigator.canShare && navigator.canShare({ files })) {
+        try {
+          await navigator.share({
+            files,
+            title: 'Wildlife Survey Package',
+            text: 'Survey data with attachments'
+          });
+          return;
+        } catch (err) {
+          // User canceled; fall through to download
+          if (err && err.name === 'AbortError') return;
+          console.warn('Share failed, falling back to download.', err);
+        }
+      }
+
+      const zipBlob = await buildZip(files);
+      const url = URL.createObjectURL(zipBlob);
       const link = document.createElement('a');
       link.href = url;
-      const dateTag = state.meta.date || new Date().toISOString().slice(0, 10);
-      link.download = `wildlife_survey_${dateTag}.csv`;
+      link.download = `wildlife_survey_package_${dateTag}.zip`;
       link.click();
       URL.revokeObjectURL(url);
     };
@@ -440,6 +621,7 @@
     document.getElementById('addStop').addEventListener('click', addStop);
     document.getElementById('newSurvey').addEventListener('click', resetSurvey);
     document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
+    document.getElementById('sharePackage').addEventListener('click', shareOrDownloadPackage);
     stopsContainer.addEventListener('input', handleStopInput);
     stopsContainer.addEventListener('change', handleStopInput);
     stopsContainer.addEventListener('click', handleStopClick);
@@ -452,8 +634,14 @@
       });
     });
 
+    attachmentInput.addEventListener('change', (event) => {
+      attachments = Array.from(event.target.files || []);
+      refreshAttachmentList();
+    });
+
     syncMetaInputs();
     renderStops();
+    refreshAttachmentList();
 
     const registerServiceWorker = async () => {
       if (!('serviceWorker' in navigator)) return;
