@@ -1,0 +1,472 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wildlife Survey Logger</title>
+  <meta name="theme-color" content="#0f1e1b" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-512.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <style>
+    :root {
+      --bg: #0f1e1b;
+      --panel: #132824;
+      --card: #17342e;
+      --accent: #9be7c4;
+      --muted: #8fb3a5;
+      --text: #e9f5f0;
+      --danger: #ffb4a2;
+      --border: rgba(255, 255, 255, 0.08);
+      --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, rgba(155, 231, 196, 0.05), transparent 30%),
+        radial-gradient(circle at 80% 0%, rgba(155, 231, 196, 0.05), transparent 25%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 22px 80px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    header h1 {
+      margin: 0 0 6px;
+      letter-spacing: 0.3px;
+    }
+    header p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 720px;
+      line-height: 1.4;
+    }
+    .badge {
+      background: linear-gradient(120deg, #1f6f5b, #249871);
+      color: #eafff5;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      align-self: center;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: var(--accent);
+      color: #0d1b17;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+      transition: transform 0.08s ease, box-shadow 0.1s ease;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3); }
+    button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+    button.danger { background: var(--danger); color: #2d0a01; }
+    input, select, textarea {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 10px;
+      color: var(--text);
+      font-size: 14px;
+      transition: border 0.1s ease, box-shadow 0.1s ease;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(155, 231, 196, 0.22);
+    }
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .stops { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+    .stop-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      min-height: 320px;
+    }
+    .stop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .stop-title { display: flex; flex-direction: column; gap: 4px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(155, 231, 196, 0.12);
+      color: var(--accent);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+    }
+    .stop-sub { color: var(--muted); font-size: 12px; letter-spacing: 0.2px; }
+    .stop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .stop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .notes { grid-column: 1 / -1; }
+    textarea { min-height: 70px; resize: vertical; }
+    .status { font-size: 12px; color: var(--muted); min-height: 16px; }
+    .footer { color: var(--muted); font-size: 13px; margin-top: 8px; line-height: 1.5; }
+    @media (max-width: 700px) { header { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <div class="badge">Offline-first field logger</div>
+        <h1>Wildlife Survey Logger</h1>
+        <p>Capture stop-based observations (e.g., ruffed grouse transects) with GPS/time stamps, store locally on the device, and export to CSV for Excel/GIS. Works offline; sync by downloading the file.</p>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <strong>Survey details</strong>
+          <div class="stop-sub">Required fields are stored on-device only. Clear with “New survey”.</div>
+        </div>
+        <div class="controls">
+          <button id="addStop" class="secondary">Add stop</button>
+          <button id="downloadCsv">Download CSV</button>
+          <button id="newSurvey" class="danger">New survey</button>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <label>Observer
+          <input data-meta="observer" type="text" placeholder="Name or initials" />
+        </label>
+        <label>Route / transect
+          <input data-meta="route" type="text" placeholder="Route ID" />
+        </label>
+        <label>Date
+          <input data-meta="date" type="date" />
+        </label>
+        <label>Weather
+          <input data-meta="weather" type="text" placeholder="Temp, wind, precipitation" />
+        </label>
+      </div>
+    </section>
+
+    <section id="stops" class="stops"></section>
+
+    <div class="footer">
+      Data is stored in this browser only (localStorage). Export regularly to avoid losing observations when clearing browser data. Geolocation depends on device permissions.
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'wildlife_survey_v1';
+
+    const defaultStop = (idx) => ({
+      stop: idx + 1,
+      timestamp: '',
+      lat: '',
+      lon: '',
+      detection: '',
+      count: '',
+      distance: '',
+      azimuth: '',
+      notes: '',
+      status: ''
+    });
+
+    const initialState = () => ({
+      meta: {
+        observer: '',
+        route: '',
+        date: new Date().toISOString().slice(0, 10),
+        weather: ''
+      },
+      stops: Array.from({ length: 10 }, (_, idx) => defaultStop(idx))
+    });
+
+    const loadState = () => {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.meta && Array.isArray(parsed.stops)) {
+            return {
+              meta: { ...initialState().meta, ...parsed.meta },
+              stops: parsed.stops.map((s, idx) => ({ ...defaultStop(idx), ...s, stop: idx + 1 }))
+            };
+          }
+        } catch (err) {
+          console.warn('Could not parse saved survey; starting fresh.', err);
+        }
+      }
+      return initialState();
+    };
+
+    let state = loadState();
+
+    const saveState = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    const stopsContainer = document.getElementById('stops');
+
+    const escapeHtml = (val) => String(val ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[c] || c);
+
+    const readableTime = (iso) => {
+      if (!iso) return 'No time set';
+      const d = new Date(iso);
+      return isNaN(d) ? iso : d.toLocaleString();
+    };
+
+    const renderStops = () => {
+      stopsContainer.innerHTML = state.stops
+        .map((stop, idx) => `
+          <div class="stop-card" data-index="${idx}">
+            <div class="stop-header">
+              <div class="stop-title">
+                <div class="pill">Stop ${stop.stop}</div>
+                <div class="stop-sub">${escapeHtml(readableTime(stop.timestamp))}</div>
+              </div>
+              <div class="stop-actions">
+                <button data-action="stamp" class="secondary">Stamp time</button>
+                <button data-action="geo" class="secondary">Get GPS</button>
+              </div>
+            </div>
+            <div class="stop-grid">
+              <label>Time
+                <input data-field="timestamp" type="text" value="${escapeHtml(stop.timestamp)}" placeholder="ISO or local" />
+              </label>
+              <label>Latitude
+                <input data-field="lat" type="text" inputmode="decimal" value="${escapeHtml(stop.lat)}" placeholder="40.123456" />
+              </label>
+              <label>Longitude
+                <input data-field="lon" type="text" inputmode="decimal" value="${escapeHtml(stop.lon)}" placeholder="-75.123456" />
+              </label>
+              <label>Detection
+                <select data-field="detection">
+                  ${['', 'Drumming', 'Visual', 'Flush', 'Tracks/Sign', 'Other'].map((opt) => `
+                    <option value="${opt}" ${opt === stop.detection ? 'selected' : ''}>${opt || 'None'}</option>
+                  `).join('')}
+                </select>
+              </label>
+              <label>Count
+                <input data-field="count" type="number" min="0" step="1" value="${escapeHtml(stop.count)}" />
+              </label>
+              <label>Distance (m)
+                <input data-field="distance" type="number" min="0" step="1" value="${escapeHtml(stop.distance)}" />
+              </label>
+              <label>Azimuth (deg)
+                <input data-field="azimuth" type="number" min="0" max="360" step="1" value="${escapeHtml(stop.azimuth)}" />
+              </label>
+              <label class="notes">Notes
+                <textarea data-field="notes" rows="3">${escapeHtml(stop.notes)}</textarea>
+              </label>
+            </div>
+            <div class="status">${escapeHtml(stop.status || '')}</div>
+          </div>
+        `)
+        .join('');
+    };
+
+    const updateStop = (idx, field, value) => {
+      const stop = state.stops[idx];
+      if (!stop) return;
+      stop[field] = value;
+      stop.status = field === 'timestamp' ? 'Updated time' : 'Saved';
+      saveState();
+    };
+
+    const addStop = () => {
+      const nextIndex = state.stops.length;
+      state.stops.push(defaultStop(nextIndex));
+      saveState();
+      renderStops();
+    };
+
+    const resetSurvey = () => {
+      if (!confirm('Start a new survey? This clears current entries from this browser.')) return;
+      state = initialState();
+      saveState();
+      renderStops();
+      syncMetaInputs();
+    };
+
+    const geoLocate = (idx) => {
+      const stop = state.stops[idx];
+      if (!stop) return;
+      if (!navigator.geolocation) {
+        stop.status = 'Geolocation not available on this device';
+        renderStops();
+        return;
+      }
+      stop.status = 'Requesting GPS...';
+      renderStops();
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          stop.lat = latitude.toFixed(6);
+          stop.lon = longitude.toFixed(6);
+          if (!stop.timestamp) stop.timestamp = new Date().toISOString();
+          stop.status = 'GPS captured';
+          saveState();
+          renderStops();
+        },
+        (err) => {
+          stop.status = err && err.message ? err.message : 'GPS error';
+          saveState();
+          renderStops();
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+
+    const stampTime = (idx) => {
+      const stop = state.stops[idx];
+      if (!stop) return;
+      stop.timestamp = new Date().toISOString();
+      stop.status = 'Time stamped';
+      saveState();
+      renderStops();
+    };
+
+    const syncMetaInputs = () => {
+      document.querySelectorAll('[data-meta]').forEach((input) => {
+        const field = input.dataset.meta;
+        input.value = state.meta[field] || '';
+      });
+    };
+
+    const handleStopInput = (event) => {
+      const target = event.target;
+      const card = target.closest('.stop-card');
+      if (!card) return;
+      const idx = Number(card.dataset.index);
+      const field = target.dataset.field;
+      if (!field) return;
+      updateStop(idx, field, target.value);
+    };
+
+    const handleStopClick = (event) => {
+      const target = event.target;
+      const card = target.closest('.stop-card');
+      if (!card) return;
+      const idx = Number(card.dataset.index);
+      if (target.dataset.action === 'stamp') {
+        stampTime(idx);
+      } else if (target.dataset.action === 'geo') {
+        geoLocate(idx);
+      }
+    };
+
+    const escapeCsv = (value) => {
+      const str = String(value ?? '');
+      if (/[",\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const downloadCsv = () => {
+      const header = ['observer','route','date','weather','stop','timestamp','lat','lon','detection','count','distance_m','azimuth_deg','notes'];
+      const rows = state.stops.map((stop) => (
+        [state.meta.observer, state.meta.route, state.meta.date, state.meta.weather, stop.stop, stop.timestamp, stop.lat, stop.lon, stop.detection, stop.count, stop.distance, stop.azimuth, stop.notes]
+      ));
+      const csv = [header.join(','), ...rows.map((r) => r.map(escapeCsv).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateTag = state.meta.date || new Date().toISOString().slice(0, 10);
+      link.download = `wildlife_survey_${dateTag}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    };
+
+    document.getElementById('addStop').addEventListener('click', addStop);
+    document.getElementById('newSurvey').addEventListener('click', resetSurvey);
+    document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
+    stopsContainer.addEventListener('input', handleStopInput);
+    stopsContainer.addEventListener('change', handleStopInput);
+    stopsContainer.addEventListener('click', handleStopClick);
+
+    document.querySelectorAll('[data-meta]').forEach((input) => {
+      input.addEventListener('input', (event) => {
+        const field = event.target.dataset.meta;
+        state.meta[field] = event.target.value;
+        saveState();
+      });
+    });
+
+    syncMetaInputs();
+    renderStops();
+
+    const registerServiceWorker = async () => {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const registration = await navigator.serviceWorker.register(new URL('sw.js', window.location.href));
+        console.info('Service worker registered', registration.scope);
+      } catch (err) {
+        console.warn('Service worker registration failed', err);
+      }
+    };
+
+    registerServiceWorker();
+  </script>
+</body>
+</html>
+
